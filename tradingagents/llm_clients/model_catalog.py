@@ -221,6 +221,11 @@ MODEL_OPTIONS: ProviderModeOptions = {
     "nvidia": _CUSTOM_ONLY,
     # Bedrock model IDs / cross-region inference profile IDs are user-specified.
     "bedrock": _CUSTOM_ONLY,
+    # OpenCode Go: the model list is a moving target (Go adds and drops models,
+    # and a plan sees only its own), so the model is whatever the console shows.
+    "opencode-go": _CUSTOM_ONLY,
+    # ChatGPT (OAuth) serves whatever the signed-in subscription exposes.
+    "chatgpt": _CUSTOM_ONLY,
 }
 
 

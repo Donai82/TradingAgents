@@ -1,14 +1,24 @@
-"""Social-post screening with TypeSafe's Jev, when ``TYPESAFE_API_KEY`` is set.
+"""Social-post screening: Jev's two questions, asked over TypeSafe or an LLM.
 
-Jev answers typed questions with calibrated probabilities. Each StockTwits or
-Reddit post is asked two: is it about the instrument, and which way does it
-lean on the instrument's stock. Code turns the answers into what the Sentiment
-Analyst reads: posts that are clearly about something else are dropped, and a
-stance count over the rest heads the source's block.
+Each StockTwits or Reddit post is asked two things: is it about the instrument,
+and which way does it lean on the instrument's stock. Code turns the answers
+into what the Sentiment Analyst reads: posts that are clearly about something
+else are dropped, and a stance count over the rest heads the source's block.
 
-Configured by TypeSafe's own SDK variables, ``TYPESAFE_API_KEY`` and
-``TYPESAFE_DEFAULT_MODEL``. Without a key nothing here runs; if any request fails, the source's posts are kept unscreened and the
-block says screening was unavailable.
+There are two backends for the same two questions:
+
+* **TypeSafe** (``TYPESAFE_API_KEY``) — the questions go to System One over
+  HTTP, which answers them as typed, calibrated probabilities. This is the
+  original backend and the one to prefer when the key is present.
+* **An LLM** — the questions are put to whatever model the run is already
+  configured with (so an OpenCode Go subscription, a ChatGPT sign-in, or any
+  existing provider all serve it), using structured output where the model
+  supports it. Cheap models land close to the calibrated answers, and it costs
+  no extra subscription.
+
+``post_screen`` picks: TypeSafe when its key is set, else the LLM, else no
+screening. Either way, a failure leaves the source's posts unscreened and says
+so in the block, because unscreened posts plus a caveat beat missing data.
 """
 
 import logging
@@ -123,16 +133,49 @@ def _stance(answer: dict) -> str:
     return choice
 
 
-def jev_screen(ticker: str):
-    """A post screen for the social fetchers, or None without a TypeSafe key.
+def post_screen(ticker: str, llm=None):
+    """A post screen for the social fetchers, or None when nothing can screen.
 
-    The screen takes the post texts and returns one keep flag per post and a
-    note line for the top of the source's block.
+    TypeSafe is preferred when ``TYPESAFE_API_KEY`` is set; otherwise the run's
+    own LLM answers the same questions, which makes screening work on any
+    provider (OpenCode Go, a ChatGPT sign-in, a plain API key) with no extra
+    subscription. Without a key and without an LLM there is no screen.
+
+    The returned callable takes the post texts and returns one keep flag per
+    post plus a note line for the top of the source's block.
     """
-    if not os.environ.get("TYPESAFE_API_KEY"):
-        return None
+    if os.environ.get("TYPESAFE_API_KEY"):
+        return _typesafe_screen(ticker)
+    if llm is not None:
+        from .llm_post_screen import screen_with_llm
+
+        return screen_with_llm(llm, _instrument_label(ticker))
+    return None
+
+
+def _instrument_label(ticker: str) -> str:
+    """The company name and ticker, as the screen's questions refer to it."""
     name = resolve_instrument_identity(ticker).get("company_name")
-    instrument = f"{name} ({ticker})" if name else ticker
+    return f"{name} ({ticker})" if name else ticker
+
+
+def _stance_counts(stances: list[str]) -> str:
+    return ", ".join(
+        f"{stances.count(s)} {s}" for s in ("bullish", "bearish", "neutral", "unclear")
+    )
+
+
+def _screen_note(instrument: str, kept: int, total: int, stances: list[str]) -> str:
+    """The line that heads a screened block, read by the Sentiment Analyst."""
+    return (
+        f"Screened by Jev: {kept} of the {total} posts fetched are about "
+        f"{instrument}; their stance on its stock: {_stance_counts(stances)}."
+    )
+
+
+def _typesafe_screen(ticker: str):
+    """Screen posts by asking TypeSafe's System One, one request per post."""
+    instrument = _instrument_label(ticker)
 
     def screen(posts: list[str]) -> tuple[list[bool], str]:
         try:
@@ -143,13 +186,20 @@ def jev_screen(ticker: str):
             return _unscreened(instrument, posts, "malformed response")
         except TypeSafeError as exc:
             return _unscreened(instrument, posts, str(exc))
-        counts = ", ".join(f"{stances.count(s)} {s}" for s in ("bullish", "bearish", "neutral", "unclear"))
-        return keep, (
-            f"Screened by Jev: {len(stances)} of the {len(posts)} posts fetched are about "
-            f"{instrument}; their stance on its stock: {counts}."
-        )
+        return keep, _screen_note(instrument, len(stances), len(posts), stances)
 
     return screen
+
+
+def jev_screen(ticker: str):
+    """The TypeSafe screen only, or None without a key.
+
+    Kept as the TypeSafe-specific entry point; :func:`post_screen` is what
+    callers use, since it also covers the LLM backend.
+    """
+    if not os.environ.get("TYPESAFE_API_KEY"):
+        return None
+    return _typesafe_screen(ticker)
 
 
 def _unscreened(instrument: str, posts: list[str], failure: str) -> tuple[list[bool], str]:

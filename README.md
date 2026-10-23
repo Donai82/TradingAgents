@@ -171,6 +171,7 @@ export ZHIPU_CN_API_KEY=...        # GLM via BigModel (China, open.bigmodel.cn)
 export MINIMAX_API_KEY=...         # MiniMax (global, api.minimax.io)
 export MINIMAX_CN_API_KEY=...      # MiniMax (China, api.minimaxi.com)
 export OPENROUTER_API_KEY=...      # OpenRouter
+export OPENCODE_GO_API_KEY=...     # OpenCode Go (one key, many vendors' models)
 export MISTRAL_API_KEY=...         # Mistral
 export MOONSHOT_API_KEY=...        # Kimi (Moonshot)
 export GROQ_API_KEY=...            # Groq
@@ -180,6 +181,24 @@ export ALPHA_VANTAGE_API_KEY=...   # Alpha Vantage
 export TYPESAFE_API_KEY=...        # Jev social-post screening (optional)
 ```
 
+For OpenCode Go, subscribe at [opencode.ai/console](https://opencode.ai/console) and copy the API key into `OPENCODE_GO_API_KEY`, then set `llm_provider: "opencode-go"`. One key serves models from several vendors behind a single endpoint; the model you pick decides which API is used (`grok-4.7` and `gpt-6-luna` speak the Responses API, `qwen3.8-max` and `minimax-m3` the Anthropic Messages API, and the rest OpenAI chat completions), so any model on Go's list works without further configuration.
+
+Requests carry the headers Go asks for: a `User-Agent` naming this program rather than the SDK, a stable `x-opencode-session` so a conversation keeps one route and one prompt cache, and the `x-opencode-client` / `x-opencode-request` pair the OpenCode client also sends, which Go uses in abuse monitoring. `TRADINGAGENTS_OPENCODE_SESSION` and `TRADINGAGENTS_OPENCODE_REQUEST` pin those across processes.
+
+To use a ChatGPT subscription instead of an API key, sign in and set `llm_provider: "chatgpt"`:
+
+```bash
+tradingagents auth login chatgpt            # browser sign-in
+tradingagents auth login chatgpt --device   # headless: code entered elsewhere
+tradingagents auth status                   # account, plan, token expiry
+tradingagents auth models                   # what this subscription can actually reach
+tradingagents auth logout
+```
+
+This follows [openai-oauth](https://github.com/EvanZhouDev/openai-oauth), which uses the same OAuth flow and credentials as the Codex CLI: requests go to `chatgpt.com/backend-api/codex` on your existing subscription rather than billing a platform API key. The credential is stored in `~/.codex/auth.json` — the Codex CLI's own file, honouring `$CODEX_HOME` — so if you have already run `codex login` or `npx openai-oauth login` you are signed in here with no extra step, and signing in here signs you in there. A refresh preserves the `OPENAI_API_KEY` the Codex CLI may keep in the same file. Set `TRADINGAGENTS_AUTH_FILE` to keep a separate copy.
+
+The token is refreshed automatically mid-run, and every request re-reads it, so a long run does not stop at a 401. Not every plan exposes the Codex backend; `auth models` lists what yours can reach, and the model is entered as "Custom model ID" rather than from a list, because the catalogue is account-dependent and changes.
+
 For Azure OpenAI, copy `.env.enterprise.example` to `.env.enterprise` and fill in your credentials.
 
 For AWS Bedrock, install the extra with `pip install ".[bedrock]"`, set `llm_provider: "bedrock"`, configure AWS credentials (environment variables, `~/.aws/credentials`, or an IAM role) and `AWS_DEFAULT_REGION`, and use a Bedrock model ID, e.g. `us.anthropic.claude-opus-5-5`.
@@ -188,7 +207,9 @@ For local models, configure Ollama with `llm_provider: "ollama"`. The default en
 
 For any other OpenAI-compatible server (vLLM, LM Studio, llama.cpp, or a custom relay), use `llm_provider: "openai_compatible"` and set the endpoint via `backend_url` (or `TRADINGAGENTS_LLM_BACKEND_URL`), e.g. `http://localhost:8000/v1` for vLLM or `http://localhost:1234/v1` for LM Studio. The model is whatever your server serves. No key is needed for local servers; set `OPENAI_COMPATIBLE_API_KEY` when the endpoint requires one.
 
-With `TYPESAFE_API_KEY` set, the Sentiment Analyst screens StockTwits and Reddit posts with TypeSafe's Jev before reading them. Posts that are not about the company are dropped, and each source opens with a count of the remaining posts by stance: bullish, bearish, neutral, or unclear. Without the key, posts pass through unscreened. `jev-latest` moves with new releases; set `TYPESAFE_DEFAULT_MODEL` to a versioned ID such as `jev-1.13.0` to hold it fixed across runs.
+Before reading StockTwits and Reddit posts, the Sentiment Analyst screens them: posts that are not about the company are dropped, and each source opens with a count of the remaining posts by stance — bullish, bearish, neutral, or unclear. Two questions are asked of every post, is it about the instrument, and which way does it lean.
+
+There are two backends for those questions. With `TYPESAFE_API_KEY` set, they go to TypeSafe's Jev, which answers them as typed, calibrated probabilities; `jev-latest` moves with new releases, so set `TYPESAFE_DEFAULT_MODEL` to a versioned ID such as `jev-1.13.0` to hold it fixed across runs. Without that key, the same questions go to the LLM the run is already configured with, so an OpenCode Go subscription, a ChatGPT sign-in, or any API key above gets screening with no extra subscription; one request covers a whole batch, so the cost is a fraction of one agent step. A general model is not calibrated the way System One is, so the thresholds are the same generous ones (a post is dropped only on a clear "not about it", and an unsure stance reads as "unclear"). If neither backend can answer, posts pass through unscreened and the block says so.
 
 Alternatively, copy `.env.example` to `.env` and fill in your keys:
 ```bash

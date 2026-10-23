@@ -361,6 +361,9 @@ def _llm_provider_table() -> list[tuple[str, str, str | None]]:
     ollama_url = os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434/v1"
     return [
         ("OpenAI", "openai", "https://api.openai.com/v1"),
+        # ChatGPT subscription via OAuth, not a platform API key. The endpoint
+        # is the Codex backend; sign in first with `tradingagents auth login chatgpt`.
+        ("ChatGPT (subscription sign-in)", "chatgpt", "https://chatgpt.com/backend-api/codex"),
         ("Google", "google", None),
         ("Anthropic", "anthropic", "https://api.anthropic.com/"),
         ("xAI", "xai", "https://api.x.ai/v1"),
@@ -371,6 +374,8 @@ def _llm_provider_table() -> list[tuple[str, str, str | None]]:
         ("GLM", "glm", "https://api.z.ai/api/paas/v4/"),
         ("MiniMax", "minimax", "https://api.minimax.io/v1"),
         ("OpenRouter", "openrouter", "https://openrouter.ai/api/v1"),
+        # One subscription key from opencode.ai/console, many vendors' models.
+        ("OpenCode Go", "opencode-go", "https://opencode.ai/zen/go/v1"),
         ("Mistral", "mistral", "https://api.mistral.ai/v1"),
         ("Kimi (Moonshot)", "kimi", "https://api.moonshot.ai/v1"),
         ("Groq", "groq", "https://api.groq.com/openai/v1"),
@@ -624,6 +629,40 @@ def confirm_ollama_endpoint(url: str) -> None:
         )
 
 
+def _ensure_chatgpt_session() -> str | None:
+    """Offer the ChatGPT sign-in flow when no credential is stored yet.
+
+    Declining is allowed: the run then fails with the same instruction on its
+    first request, which is friendlier than refusing to start for a provider
+    the user may not have meant to pick.
+    """
+    from tradingagents.auth import chatgpt
+
+    if chatgpt.status() is not None:
+        return None
+
+    console.print(
+        "\n[yellow]ChatGPT is selected but you are not signed in.[/yellow]"
+        "\nSign in with your ChatGPT account to use your existing subscription "
+        "instead of an API key."
+    )
+    if not sys.stdin.isatty():
+        console.print("[red]There is no terminal to confirm the sign-in in.[/red]")
+        raise typer.Exit(code=1)
+    if not questionary.confirm("Sign in now?", default=True).ask():
+        console.print("[yellow]Skipped. Sign in later with: tradingagents auth login chatgpt[/yellow]")
+        return None
+    try:
+        chatgpt.login()
+    except (chatgpt.NotSignedIn, OSError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from None
+    except KeyboardInterrupt:
+        console.print("[red]Sign-in cancelled.[/red]")
+        raise typer.Exit(code=1) from None
+    return None
+
+
 def ensure_api_key(provider: str) -> str | None:
     """Make sure the API key for `provider` is available in the environment.
 
@@ -637,6 +676,11 @@ def ensure_api_key(provider: str) -> str | None:
     """
     env_var = get_api_key_env(provider)
     if env_var is None:
+        # ChatGPT has no key to paste: it signs in with OAuth. Reaching here
+        # with no stored credential means the run would fail on its first
+        # request, so sign in now — or tell the user how, if they decline.
+        if provider.lower() == "chatgpt":
+            return _ensure_chatgpt_session()
         return None  # ollama / unknown — no key check possible
 
     # Key-optional providers (generic OpenAI-compatible / local servers) read the

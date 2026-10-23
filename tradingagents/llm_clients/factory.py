@@ -37,6 +37,17 @@ def create_llm_client(
         from .anthropic_client import AnthropicClient
         return AnthropicClient(model, base_url, **kwargs)
 
+    # ChatGPT (OAuth) and OpenCode Go are their own clients, not registry rows:
+    # the first authenticates from the auth store instead of an env key, and
+    # the second routes each model to whichever wire format Go serves it on.
+    if provider_lower == "chatgpt":
+        from .chatgpt_client import ChatGPTClient
+        return ChatGPTClient(model, base_url, **kwargs)
+
+    if provider_lower == "opencode-go":
+        from .opencode_go_client import OpenCodeGoClient
+        return OpenCodeGoClient(model, base_url, **kwargs)
+
     if provider_lower == "google":
         from .google_client import GoogleClient
         return GoogleClient(model, base_url, **kwargs)
