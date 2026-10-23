@@ -38,18 +38,26 @@ dev = [
 bedrock = [
     "langchain-aws>=1.7.9",
 ]
+# Local web dashboard (Flask backend + static single-page UI).
+gui = [
+    "flask>=3.0.0",
+    "flask-cors>=4.0.0",
+    "markdown>=3.6",
+]
 
 [project.scripts]
 tradingagents = "cli.main:app"
+tradingagents-gui = "gui.app:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "tradingagents.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["tradingagents*", "cli*"]
+include = ["tradingagents*", "cli*", "gui*"]
 
 [tool.setuptools.package-data]
 cli = ["static/*"]
+gui = ["static/css/*", "static/js/*", "templates/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

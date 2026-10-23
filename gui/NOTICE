@@ -1,0 +1,5 @@
+Portions of this directory are derived from TheLocalLab/TradingAgents-GUI
+(https://github.com/TheLocalLab/TradingAgents-GUI), licensed under the
+Apache License, Version 2.0. See the repository's LICENSE file.
+
+The run backend (gui/run_worker.py) was adapted for TradingAgents v0.5.2.

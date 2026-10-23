@@ -233,6 +233,25 @@ tradingagents --ticker NVDA --date 2026-09-23 --analysts market,news,fundamental
 ```
 Each flag skips only its own question. Run without a terminal, a missing answer stops the run before it starts and names the flag or variable to set.
 
+### Web dashboard
+
+The repository also ships a local web dashboard (Flask backend, single-page UI):
+
+```bash
+./start.sh --web                 # http://127.0.0.1:5000
+./start.sh --web --port 8080     # another port
+./start.sh --web --no-browser    # don't open a browser automatically
+```
+
+Or, once the package is installed with the `gui` extra:
+
+```bash
+pip install ".[gui]"
+tradingagents-gui
+```
+
+The dashboard runs the same graph and shares the CLI's `.env`, memory log, checkpoints, and report directory. It shows live per-agent progress, report sections, tool calls, token/cost stats, and provides a report browser with Markdown/HTML export plus provider/key setup.
+
 ### Markets and tickers
 
 TradingAgents works with any market Yahoo Finance covers, using the exchange-suffixed ticker. Company identity and the alpha benchmark resolve automatically per market.
